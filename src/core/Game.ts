@@ -21,6 +21,34 @@ export class Game {
   private catSprite?: THREE.Sprite
   private bushMesh?: THREE.Mesh
   
+  // Bush movement system
+  private bushTargetX: number = 0
+  private bushCurrentX: number = 0
+  private bushVelocity: number = 0
+  private bushMoveTimer: number = 0
+  private bushNextMoveTime: number = 2
+  private bushDirection: number = 1
+  
+  // Game state system
+  private gameState: 'PLAYER_TURN' | 'NPC_TURN' | 'TURN_ENDING' = 'PLAYER_TURN'
+  private shoesThrown: number = 0
+  private roundNumber: number = 1
+  private turnEndTimer: number = 0
+  private pendingTurnSwitch: 'TO_NPC' | 'TO_PLAYER' | null = null
+  
+  // Health systems
+  private bushHealth: number = 3
+  private playerHealth: number = 3 
+  private bushHitTimer: number = 0
+  private playerHitTimer: number = 0
+  private bushFlashing: boolean = false
+  private playerFlashing: boolean = false
+  
+  // NPC AI system
+  private npcTimer: number = 0
+  private npcThrowDelay: number = 0
+  private npcShoesThrown: number = 0
+  
   private lastTime: number = 0
   private lastToggleTime: number = 0
   private lastThrowTime: number = 0
@@ -170,15 +198,17 @@ export class Game {
     const deltaTime = (currentTime - this.lastTime) / 1000
     this.lastTime = currentTime
     
-    if (this.inputSystem.isKeyPressed('k') && currentTime - this.lastToggleTime > 300 && !this.isTransitioning) {
-      this.toggleCamera()
-      this.lastToggleTime = currentTime
+    // Handle input based on game state
+    if (this.gameState === 'PLAYER_TURN') {
+      // Only allow player throwing during player turn
+      if (this.inputSystem.isKeyPressed(' ') && currentTime - this.lastThrowTime > 500) {
+        this.throwPlayerShoe()
+        this.lastThrowTime = currentTime
+      }
     }
     
-    if (this.inputSystem.isKeyPressed(' ') && currentTime - this.lastThrowTime > 500) {
-      this.throwShoe()
-      this.lastThrowTime = currentTime
-    }
+    // Update game state and NPC AI
+    this.updateGameState(deltaTime)
     
     const inputAxis = this.inputSystem.getHorizontalAxis(this.isFirstPerson)
     
@@ -205,12 +235,23 @@ export class Game {
     
     if (this.catSprite) {
       this.catSprite.position.x = this.currentX
+      
+      // Handle player hit flash effect
+      if (this.playerFlashing) {
+        this.playerHitTimer -= deltaTime
+        const flashSpeed = 10
+        const flashAlpha = 0.5 + 0.5 * Math.sin(this.playerHitTimer * flashSpeed)
+        ;(this.catSprite.material as THREE.SpriteMaterial).color.setRGB(1, flashAlpha, flashAlpha)
+        
+        if (this.playerHitTimer <= 0) {
+          this.playerFlashing = false
+          ;(this.catSprite.material as THREE.SpriteMaterial).color.setRGB(1, 1, 1) // Reset to white
+        }
+      }
     }
     
-    if (this.bushMesh) {
-      const time = Date.now() * 0.001
-      this.bushMesh.position.y = 1 + Math.sin(time * 2) * 0.05
-    }
+    // Update bush movement and animation
+    this.updateBush(deltaTime)
     
     this.updateShoes(deltaTime)
   }
@@ -275,26 +316,98 @@ export class Game {
   }
   
   /**
-   * Creates and throws a shoe projectile toward the bush
+   * Updates game state, handles turn switching and NPC AI
+   * @param deltaTime - Time elapsed since last frame in seconds
    */
-  private throwShoe(): void {
+  private updateGameState(deltaTime: number): void {
+    if (this.gameState === 'NPC_TURN') {
+      this.npcTimer += deltaTime
+      
+      // NPC throwing logic
+      if (this.npcShoesThrown < 2) {
+        const maxDelay = this.npcShoesThrown === 0 ? 6 : 10 // 6s for first, 10s for second
+        
+        if (this.npcTimer >= this.npcThrowDelay) {
+          this.throwNPCShoe()
+          this.npcShoesThrown++
+          this.npcTimer = 0
+          
+          if (this.npcShoesThrown < 2) {
+            // Set delay for next throw
+            this.npcThrowDelay = Math.random() * maxDelay
+          } else {
+            // NPC turn complete, start 2-second delay before switching
+            this.startTurnEndDelay('TO_PLAYER')
+          }
+        }
+      }
+    } else if (this.gameState === 'TURN_ENDING') {
+      // Handle 2-second delay before turn switch
+      this.turnEndTimer += deltaTime
+      
+      if (this.turnEndTimer >= 2.0) {
+        // Execute the pending turn switch
+        if (this.pendingTurnSwitch === 'TO_PLAYER') {
+          this.switchToPlayerTurn()
+        } else if (this.pendingTurnSwitch === 'TO_NPC') {
+          this.switchToNPCTurn()
+        }
+        this.turnEndTimer = 0
+        this.pendingTurnSwitch = null
+      }
+    }
+  }
+  
+  /**
+   * Starts the 2-second delay before switching turns
+   */
+  private startTurnEndDelay(nextTurn: 'TO_NPC' | 'TO_PLAYER'): void {
+    this.gameState = 'TURN_ENDING'
+    this.pendingTurnSwitch = nextTurn
+    this.turnEndTimer = 0
+    console.log(`⏳ Turn ending, switching in 2 seconds...`)
+  }
+  
+  /**
+   * Creates and throws a shoe projectile from the player toward the bush
+   */
+  private throwPlayerShoe(): void {
+    const shoe = this.createShoe(this.currentX, 1.0, 0.2, 0, 8, 'player')
+    
+    this.shoesThrown++
+    console.log(`👟 Player shoe ${this.shoesThrown}/2 thrown`)
+    
+    // Check if player turn is complete
+    if (this.shoesThrown >= 2) {
+      // Player turn complete, start 2-second delay before switching
+      this.startTurnEndDelay('TO_NPC')
+    }
+  }
+  
+  /**
+   * Creates and throws a shoe projectile from the bush toward the player
+   */
+  private throwNPCShoe(): void {
+    const targetX = this.currentX // Aim at current player position
+    const vX = (targetX - this.bushCurrentX) / 1.0 // Reach target in 1 second
+    
+    const shoe = this.createShoe(this.bushCurrentX, 1.0, 8, vX, -8, 'npc')
+    
+    console.log(`💥 NPC shoe ${this.npcShoesThrown + 1}/2 thrown at player`)
+  }
+  
+  /**
+   * Creates a shoe mesh with trajectory data
+   */
+  private createShoe(startX: number, startY: number, startZ: number, vX: number, vZ: number, thrower: 'player' | 'npc'): THREE.Mesh {
     const shoeGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.4)
     const shoeMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0x8B4513,
+      color: thrower === 'player' ? 0x8B4513 : 0x654321, // Slightly different colors
       flatShading: true 
     })
     
     const shoe = new THREE.Mesh(shoeGeometry, shoeMaterial)
-    
-    const startX = this.currentX
-    const startY = 1.0
-    const startZ = 0.2
-    
     shoe.position.set(startX, startY, startZ)
-    
-    const vX = 0
-    const vZ = 8
-    const startTime = Date.now() / 1000
     
     ;(shoe as any).trajectory = {
       startX: startX,
@@ -302,16 +415,105 @@ export class Game {
       startZ: startZ,
       vX: vX,
       vZ: vZ,
-      startTime: startTime,
-      spinning: 0
+      startTime: Date.now() / 1000,
+      spinning: 0,
+      hasHit: false,
+      thrower: thrower
     }
     
     this.shoes.push(shoe)
     this.scene.add(shoe)
     
-    console.log(`👟 Shoe thrown from (${startX.toFixed(2)}, ${startY.toFixed(2)}, ${startZ.toFixed(2)})`)
+    return shoe
   }
   
+  /**
+   * Switches to NPC turn and transitions camera
+   */
+  private switchToNPCTurn(): void {
+    this.gameState = 'NPC_TURN'
+    this.npcTimer = 0
+    this.npcShoesThrown = 0
+    this.npcThrowDelay = Math.random() * 6 // 0-6 seconds for first throw
+    
+    // Switch to third-person camera
+    if (this.isFirstPerson) {
+      this.toggleCamera()
+    }
+    
+    console.log('🌳 NPC Turn Started')
+  }
+  
+  /**
+   * Switches to player turn and transitions camera
+   */
+  private switchToPlayerTurn(): void {
+    this.gameState = 'PLAYER_TURN'
+    this.shoesThrown = 0
+    this.roundNumber++
+    
+    // Switch to first-person camera
+    if (!this.isFirstPerson) {
+      this.toggleCamera()
+    }
+    
+    console.log(`🐱 Player Turn Started - Round ${this.roundNumber}`)
+  }
+  
+  /**
+   * Updates bush position, movement, and visual effects
+   * @param deltaTime - Time elapsed since last frame in seconds
+   */
+  private updateBush(deltaTime: number): void {
+    if (!this.bushMesh) return
+    
+    // Random movement system
+    this.bushMoveTimer += deltaTime
+    
+    // Pick new direction every 0-4s (skewed towards longer times)
+    if (this.bushMoveTimer >= this.bushNextMoveTime) {
+      this.bushMoveTimer = 0
+      // Skewed distribution: 0-4s with bias towards higher numbers
+      const random = Math.random()
+      this.bushNextMoveTime = random * random * 4 // Quadratic distribution skews towards higher values
+      this.bushDirection = (Math.random() - 0.5) * 2 // -1 to 1
+    }
+    
+    // Move bush with same speed as player
+    const speed = 4.0
+    this.bushTargetX += this.bushDirection * speed * deltaTime
+    this.bushTargetX = Math.max(-1.5, Math.min(1.5, this.bushTargetX)) // Same bounds as player
+    
+    // Smooth movement using same spring physics as player
+    const displacement = this.bushTargetX - this.bushCurrentX
+    const springForce = this.springConstant * displacement
+    const dampingForce = 2 * this.dampingRatio * Math.sqrt(this.springConstant) * this.bushVelocity
+    
+    const acceleration = springForce - dampingForce
+    this.bushVelocity += acceleration * deltaTime
+    this.bushCurrentX += this.bushVelocity * deltaTime
+    
+    // Update bush position
+    this.bushMesh.position.x = this.bushCurrentX
+    
+    // Idle bob animation
+    const time = Date.now() * 0.001
+    this.bushMesh.position.y = 1 + Math.sin(time * 2) * 0.05
+    
+    // Handle hit flash effect
+    if (this.bushFlashing) {
+      this.bushHitTimer -= deltaTime
+      const flashSpeed = 10
+      const flashAlpha = 0.5 + 0.5 * Math.sin(this.bushHitTimer * flashSpeed)
+      ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setRGB(1, flashAlpha * 0.2, flashAlpha * 0.2)
+      
+      if (this.bushHitTimer <= 0) {
+        this.bushFlashing = false
+        ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setHex(0x2d5a27) // Reset to green
+      }
+    }
+  }
+
   /**
    * Updates all active shoe projectiles with physics and animation
    * @param deltaTime - Time elapsed since last frame in seconds
@@ -339,6 +541,31 @@ export class Game {
       shoe.position.y = traj.startY + 1.2 * Math.sin(Math.PI * flightProgress)
       shoe.position.z = traj.startZ + traj.vZ * flightProgress
       
+      // Check for hits based on who threw the shoe
+      if (!traj.hasHit) {
+        if (traj.thrower === 'player' && this.bushMesh) {
+          // Player shoe hitting bush
+          const distanceX = Math.abs(shoe.position.x - this.bushCurrentX)
+          const distanceZ = Math.abs(shoe.position.z - this.bushMesh.position.z)
+          const distanceY = Math.abs(shoe.position.y - this.bushMesh.position.y)
+          
+          if (distanceX < 0.8 && distanceZ < 0.5 && distanceY < 1.2) {
+            this.hitBush()
+            traj.hasHit = true
+          }
+        } else if (traj.thrower === 'npc') {
+          // NPC shoe hitting player
+          const distanceX = Math.abs(shoe.position.x - this.currentX)
+          const distanceZ = Math.abs(shoe.position.z - 0) // Player at z=0
+          const distanceY = Math.abs(shoe.position.y - 0.8) // Player sprite at y=0.8
+          
+          if (distanceX < 0.6 && distanceZ < 0.5 && distanceY < 1.0) {
+            this.hitPlayer()
+            traj.hasHit = true
+          }
+        }
+      }
+      
       traj.spinning += deltaTime * Math.PI * 2
       shoe.rotation.x = traj.spinning
       shoe.rotation.z = traj.spinning * 0.7
@@ -346,9 +573,182 @@ export class Game {
   }
   
   /**
-   * Renders the 3D scene using the current active camera
+   * Handles when a shoe hits the bush
+   */
+  private hitBush(): void {
+    this.bushHealth--
+    this.bushFlashing = true
+    this.bushHitTimer = 0.5
+    
+    console.log(`🎯 Bush hit! Health: ${this.bushHealth}`)
+    
+    if (this.bushHealth <= 0) {
+      this.restartGame()
+    }
+  }
+  
+  /**
+   * Handles when a shoe hits the player
+   */
+  private hitPlayer(): void {
+    this.playerHealth--
+    this.playerFlashing = true
+    this.playerHitTimer = 0.5
+    
+    console.log(`💥 Player hit! Health: ${this.playerHealth}`)
+    
+    if (this.playerHealth <= 0) {
+      this.restartGame()
+    }
+  }
+  
+  /**
+   * Restarts the game by resetting all state
+   */
+  private restartGame(): void {
+    console.log('🔄 Game Over - Restarting!')
+    
+    // Reset game state
+    this.gameState = 'PLAYER_TURN'
+    this.shoesThrown = 0
+    this.roundNumber = 1
+    this.turnEndTimer = 0
+    this.pendingTurnSwitch = null
+    
+    // Reset health
+    this.bushHealth = 3
+    this.playerHealth = 3
+    
+    // Reset bush
+    this.bushTargetX = 0
+    this.bushCurrentX = 0
+    this.bushVelocity = 0
+    this.bushMoveTimer = 0
+    this.bushNextMoveTime = 2
+    this.bushFlashing = false
+    
+    // Reset player
+    this.targetX = 0
+    this.currentX = 0
+    this.velocity = 0
+    this.playerFlashing = false
+    
+    // Reset NPC AI
+    this.npcTimer = 0
+    this.npcThrowDelay = 0
+    this.npcShoesThrown = 0
+    
+    // Clear all shoes
+    for (const shoe of this.shoes) {
+      this.scene.remove(shoe)
+    }
+    this.shoes = []
+    
+    // Reset bush position and color
+    if (this.bushMesh) {
+      this.bushMesh.position.x = 0
+      ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setHex(0x2d5a27)
+    }
+    
+    // Reset cat position and color
+    if (this.catSprite) {
+      this.catSprite.position.x = 0
+      ;(this.catSprite.material as THREE.SpriteMaterial).color.setRGB(1, 1, 1)
+    }
+    
+    // Reset cameras and ensure first-person
+    this.fpCamera.position.x = 0
+    this.tpCamera.position.x = 0
+    if (!this.isFirstPerson) {
+      this.isFirstPerson = true
+      this.currentCamera = this.fpCamera
+    }
+  }
+
+  /**
+   * Renders the 3D scene and UI using the current active camera
    */
   public render(): void {
     this.renderer.render(this.scene, this.currentCamera)
+    this.renderUI()
+  }
+  
+  /**
+   * Renders the UI overlay with hearts and round counter
+   */
+  private renderUI(): void {
+    const canvas = this.renderer.domElement
+    const ctx = canvas.getContext('2d')
+    
+    if (!ctx) return
+    
+    const heartSize = 30
+    const margin = 20
+    
+    // Draw both sets of hearts in top-left corner
+    
+    // Draw player hearts (top-left, first row)
+    ctx.font = `${heartSize}px Arial`
+    for (let i = 0; i < 3; i++) {
+      const x = margin + i * (heartSize + 5)
+      const y = margin
+      
+      ctx.fillStyle = i < this.playerHealth ? '#ff0000' : '#333333'
+      ctx.fillText('♥', x, y + heartSize)
+    }
+    
+    // Draw player label
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '16px Arial'
+    ctx.fillText('🐱 PLAYER', margin, margin + 45)
+    
+    // Draw bush hearts (top-left, second row)
+    ctx.font = `${heartSize}px Arial`
+    for (let i = 0; i < 3; i++) {
+      const x = margin + i * (heartSize + 5)
+      const y = margin + 60 // Offset below player hearts
+      
+      ctx.fillStyle = i < this.bushHealth ? '#ff0000' : '#333333'
+      ctx.fillText('♥', x, y + heartSize)
+    }
+    
+    // Draw bush label
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '16px Arial'
+    ctx.fillText('🌳 BUSH', margin, margin + 105)
+    
+    // Draw round counter (center top)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 24px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText(`ROUND ${this.roundNumber}`, canvas.width / 2, margin + 30)
+    
+    // Draw turn indicator
+    ctx.font = '18px Arial'
+    let turnText: string
+    let turnColor: string
+    
+    if (this.gameState === 'PLAYER_TURN') {
+      turnText = 'YOUR TURN'
+      turnColor = '#00ff00'
+    } else if (this.gameState === 'NPC_TURN') {
+      turnText = 'NPC TURN'
+      turnColor = '#ff6600'
+    } else {
+      turnText = 'SWITCHING...'
+      turnColor = '#ffff00'
+    }
+    ctx.fillStyle = turnColor
+    ctx.fillText(turnText, canvas.width / 2, margin + 55)
+    
+    // Draw shoe counter during player turn
+    if (this.gameState === 'PLAYER_TURN') {
+      ctx.font = '16px Arial'
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(`SHOES: ${this.shoesThrown}/2`, canvas.width / 2, margin + 75)
+    }
+    
+    // Reset text alignment
+    ctx.textAlign = 'left'
   }
 }
