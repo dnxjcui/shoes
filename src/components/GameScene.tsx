@@ -12,6 +12,22 @@ import { InputSystem } from './systems/InputSystem'
 const WORLD_BOUNDS = { min: -1.5, max: 1.5 } // x ∈ [−5, +5] m
 const WORLD_DEPTH = 8 // Bush depth at z=8 for better separation
 
+// Hit detection system per game_fix_plan.md
+const getRailIndex = (x: number): number => {
+  const laneWidth = 10 // -5 to +5 = 10m total
+  const railWidth = laneWidth / 11 // ≈ 0.9m per rail
+  const normalizedX = x + 5 // Convert to 0-10 range
+  return Math.floor(normalizedX / railWidth)
+}
+
+const checkHit = (projectilePos: THREE.Vector3, targetPos: THREE.Vector3): boolean => {
+  const projectileRail = getRailIndex(projectilePos.x)
+  const targetRail = getRailIndex(targetPos.x)
+  const nearGround = projectilePos.y < 0.15
+  
+  return projectileRail === targetRail && nearGround
+}
+
 // Camera positions - Fixed for proper viewing angles
 const CAMERA_POSITIONS = {
   // First-person (cat eyes) - looking straight forward (+z direction)
@@ -28,9 +44,12 @@ const CAMERA_POSITIONS = {
 
 interface GameState {
   currentTurn: 'PLAYER_TURN' | 'NPC_TURN'
+  gamePhase: 'Intro' | 'Player_Turn' | 'NPC_Turn' | 'Victory' | 'Defeat'
   cameraMode: 'FP' | 'TP'
   playerPosition: THREE.Vector3
   bushPosition: THREE.Vector3
+  playerHealth: number
+  bushHealth: number
 }
 
 interface ShoeData {
@@ -94,6 +113,51 @@ export function GameScene() {
             {overlayState.cameraMode === 'FP' ? 'First-Person' : 'Third-Person'}
           </span>
         </p>
+        <p style={{ margin: '5px 0' }}>
+          Phase: <span style={{ color: '#FFC107' }}>
+            {overlayState.gamePhase}
+          </span>
+        </p>
+      </div>
+      
+      {/* Health UI - Player hearts (top-left) */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '350px',
+        color: 'white',
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        zIndex: 100
+      }}>
+        <div>Player: {Array.from({ length: 3 }, (_, i) => (
+          <span key={i} style={{ 
+            color: i < overlayState.playerHealth ? '#ff0000' : '#444',
+            marginRight: '5px'
+          }}>
+            ♥
+          </span>
+        ))}</div>
+      </div>
+      
+      {/* Health UI - Bush hearts (top-right) */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        color: 'white',
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        zIndex: 100
+      }}>
+        <div>Bush: {Array.from({ length: 3 }, (_, i) => (
+          <span key={i} style={{ 
+            color: i < overlayState.bushHealth ? '#ff0000' : '#444',
+            marginRight: '5px'
+          }}>
+            ♥
+          </span>
+        ))}</div>
       </div>
       
       <Canvas
@@ -113,13 +177,46 @@ export function GameScene() {
 function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: GameState) => void }) {
   const [gameState, setGameState] = useState<GameState>({
     currentTurn: 'PLAYER_TURN',
+    gamePhase: 'Intro',
     cameraMode: 'FP', 
     playerPosition: new THREE.Vector3(0, 0, 0),
-    bushPosition: new THREE.Vector3(0, 0, 8)
+    bushPosition: new THREE.Vector3(0, 0, 8),
+    playerHealth: 3,
+    bushHealth: 3
   })
   
   // Shoe management
   const [activeShoes, setActiveShoes] = useState<ShoeData[]>([])
+  
+  // State machine logic per game_fix_plan.md
+  useEffect(() => {
+    switch (gameState.gamePhase) {
+      case 'Intro':
+        setTimeout(() => {
+          setGameState(prev => ({ ...prev, gamePhase: 'Player_Turn', currentTurn: 'PLAYER_TURN' }))
+        }, 2000)
+        break
+      case 'Player_Turn':
+        // Player turn logic - handled by input system
+        break
+      case 'NPC_Turn':
+        // NPC turn logic - handled by Bush AI
+        break
+      case 'Victory':
+      case 'Defeat':
+        // End game logic - could add restart functionality
+        break
+    }
+  }, [gameState.gamePhase])
+  
+  // Check win/lose conditions
+  useEffect(() => {
+    if (gameState.playerHealth <= 0) {
+      setGameState(prev => ({ ...prev, gamePhase: 'Defeat' }))
+    } else if (gameState.bushHealth <= 0) {
+      setGameState(prev => ({ ...prev, gamePhase: 'Victory' }))
+    }
+  }, [gameState.playerHealth, gameState.bushHealth])
   
   // Sync state with overlay
   useEffect(() => {
@@ -260,35 +357,35 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
         <meshLambertMaterial color={0x000000} />
       </mesh>
       
-      {/* White walls around environment */}
+      {/* White walls around environment - Fixed with DoubleSide materials */}
       {/* Back wall (behind Bush) - Bush is at z=8, so put wall at z=10 */}
       <mesh position={[0, 3, 10]}>
         <planeGeometry args={[12, 6]} />
-        <meshLambertMaterial color={0xffffff} />
+        <meshLambertMaterial color={0xffffff} side={2} />
       </mesh>
       
       {/* Front wall (behind Player) - Player is at z=0, so put wall at z=-2 */}
       <mesh position={[0, 3, -2]} rotation={[0, Math.PI, 0]}>
         <planeGeometry args={[12, 6]} />
-        <meshLambertMaterial color={0xffffff} />
+        <meshLambertMaterial color={0xffffff} side={2} />
       </mesh>
       
       {/* Left wall */}
       <mesh position={[-6, 3, 5]} rotation={[0, Math.PI / 2, 0]}>
         <planeGeometry args={[14, 6]} />
-        <meshLambertMaterial color={0xffffff} />
+        <meshLambertMaterial color={0xffffff} side={2} />
       </mesh>
       
       {/* Right wall */}
       <mesh position={[6, 3, 5]} rotation={[0, -Math.PI / 2, 0]}>
         <planeGeometry args={[14, 6]} />
-        <meshLambertMaterial color={0xffffff} />
+        <meshLambertMaterial color={0xffffff} side={2} />
       </mesh>
       
       {/* Ceiling (off-white) */}
       <mesh position={[0, 6, 5]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[12, 14]} />
-        <meshLambertMaterial color={0xf8f8f8} />
+        <meshLambertMaterial color={0xf8f8f8} side={2} />
       </mesh>
       
       {/* World boundaries (visual guides) */}
@@ -316,9 +413,16 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
         <ShoeEntity
           key={shoe.id}
           initialPosition={shoe.initialPosition}
+          targetPosition={gameState.bushPosition}
           onHit={(target) => {
             console.log(`Shoe ${shoe.id} hit:`, target)
-            // TODO: Handle hit logic (damage, score, etc.)
+            if (target === 'bush') {
+              // Damage Bush and check for victory
+              setGameState(prev => ({
+                ...prev,
+                bushHealth: Math.max(0, prev.bushHealth - 1)
+              }))
+            }
           }}
           onRemove={() => handleShoeRemove(shoe.id)}
         />
