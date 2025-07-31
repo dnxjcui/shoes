@@ -1,8 +1,8 @@
 
-import { BushComponent } from './components/BushComponent'
+import { GameScene } from './components/GameScene'
 
 function App() {
-  return <BushComponent />
+  return <GameScene />
 }
 
 export default App
