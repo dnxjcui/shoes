@@ -4,6 +4,7 @@ import { PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { BushEntity } from './entities/BushEntity'
 import { PlayerEntity } from './entities/PlayerEntity'
+import { ShoeEntity } from './entities/ShoeEntity'
 import { CameraSystem } from './systems/CameraSystem'
 import { InputSystem } from './systems/InputSystem'
 
@@ -30,6 +31,11 @@ interface GameState {
   cameraMode: 'FP' | 'TP'
   playerPosition: THREE.Vector3
   bushPosition: THREE.Vector3
+}
+
+interface ShoeData {
+  id: string
+  initialPosition: THREE.Vector3
 }
 
 
@@ -79,6 +85,9 @@ export function GameScene() {
           <strong>←/→</strong> - Move Player (during Player Turn)
         </p>
         <p style={{ margin: '5px 0' }}>
+          <strong>SPACE</strong> - Throw Shoe (during Player Turn)
+        </p>
+        <p style={{ margin: '5px 0' }}>
           Current: <span style={{ 
             color: overlayState.cameraMode === 'FP' ? '#4CAF50' : '#ff9800' 
           }}>
@@ -108,6 +117,9 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
     playerPosition: new THREE.Vector3(0, 0, 0),
     bushPosition: new THREE.Vector3(0, 0, 8)
   })
+  
+  // Shoe management
+  const [activeShoes, setActiveShoes] = useState<ShoeData[]>([])
   
   // Sync state with overlay
   useEffect(() => {
@@ -152,6 +164,24 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
       ...prev,
       bushPosition: position.clone()
     }))
+  }, [])
+  
+  // Handle shoe throwing
+  const handleShoeThrow = useCallback((position: THREE.Vector3) => {
+    if (gameState.currentTurn !== 'PLAYER_TURN') return
+    
+    const newShoe: ShoeData = {
+      id: `shoe_${Date.now()}_${Math.random()}`,
+      initialPosition: position.clone()
+    }
+    
+    setActiveShoes(prev => [...prev, newShoe])
+    console.log('Shoe thrown from position:', position)
+  }, [gameState.currentTurn])
+  
+  // Handle shoe removal
+  const handleShoeRemove = useCallback((shoeId: string) => {
+    setActiveShoes(prev => prev.filter(shoe => shoe.id !== shoeId))
   }, [])
   
   return (
@@ -224,10 +254,41 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
         distance={20}
       />
       
-      {/* Ground plane */}
+      {/* Ground plane - BLACK */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[12, 12]} />
-        <meshLambertMaterial color={0x2a5a2a} />
+        <meshLambertMaterial color={0x000000} />
+      </mesh>
+      
+      {/* White walls around environment */}
+      {/* Back wall (behind Bush) - Bush is at z=8, so put wall at z=10 */}
+      <mesh position={[0, 3, 10]}>
+        <planeGeometry args={[12, 6]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+      
+      {/* Front wall (behind Player) - Player is at z=0, so put wall at z=-2 */}
+      <mesh position={[0, 3, -2]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={[12, 6]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+      
+      {/* Left wall */}
+      <mesh position={[-6, 3, 5]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[14, 6]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+      
+      {/* Right wall */}
+      <mesh position={[6, 3, 5]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[14, 6]} />
+        <meshLambertMaterial color={0xffffff} />
+      </mesh>
+      
+      {/* Ceiling (off-white) */}
+      <mesh position={[0, 6, 5]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[12, 14]} />
+        <meshLambertMaterial color={0xf8f8f8} />
       </mesh>
       
       {/* World boundaries (visual guides) */}
@@ -239,6 +300,7 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
         onPositionUpdate={updatePlayerPosition}
         currentTurn={gameState.currentTurn}
         cameraMode={gameState.cameraMode}
+        onShoeThrow={handleShoeThrow}
       />
       
       <BushEntity
@@ -248,6 +310,19 @@ function GameEnvironmentWrapper({ onStateChange }: { onStateChange: (state: Game
         currentTurn={gameState.currentTurn}
         playerPosition={gameState.playerPosition}
       />
+      
+      {/* Active shoes */}
+      {activeShoes.map((shoe) => (
+        <ShoeEntity
+          key={shoe.id}
+          initialPosition={shoe.initialPosition}
+          onHit={(target) => {
+            console.log(`Shoe ${shoe.id} hit:`, target)
+            // TODO: Handle hit logic (damage, score, etc.)
+          }}
+          onRemove={() => handleShoeRemove(shoe.id)}
+        />
+      ))}
       
       {/* Debug info */}
       <DebugInfo gameState={gameState} />

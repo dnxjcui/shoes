@@ -8,6 +8,7 @@ interface PlayerEntityProps {
   onPositionUpdate: (position: THREE.Vector3) => void
   currentTurn: 'PLAYER_TURN' | 'NPC_TURN'
   cameraMode: 'FP' | 'TP' // Need for axis flipping in FPV
+  onShoeThrow?: (position: THREE.Vector3) => void
 }
 
 // Spring physics constants from implementation guide (section 3.1)
@@ -32,7 +33,8 @@ export function PlayerEntity({
   worldBounds, 
   onPositionUpdate, 
   currentTurn,
-  cameraMode
+  cameraMode,
+  onShoeThrow
 }: PlayerEntityProps) {
   const meshRef = useRef<THREE.Group>(null!)
   
@@ -67,6 +69,12 @@ export function PlayerEntity({
         case 'd':
           setInput(prev => ({ ...prev, rightPressed: true }))
           break
+        case ' ': // Spacebar for shoe throwing
+        case 'space':
+          if (onShoeThrow && meshRef.current) {
+            onShoeThrow(meshRef.current.position.clone())
+          }
+          break
       }
     }
     
@@ -98,12 +106,12 @@ export function PlayerEntity({
     
     if (cameraMode === 'FP') {
       // FPV: Normal mapping (right = +1, left = -1)
-      if (input.leftPressed) axis -= 1
-      if (input.rightPressed) axis += 1
+      if (input.leftPressed) axis += 1
+      if (input.rightPressed) axis -= 1
     } else {
       // TPV: Reversed mapping since we're behind bush looking at player
-      if (input.leftPressed) axis += 1  // Left key moves player right from TPV perspective
-      if (input.rightPressed) axis -= 1 // Right key moves player left from TPV perspective
+      if (input.leftPressed) axis -= 1  // Left key moves player right from TPV perspective
+      if (input.rightPressed) axis += 1 // Right key moves player left from TPV perspective
     }
     
     setInput(prev => ({ ...prev, axis }))

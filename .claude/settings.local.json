@@ -11,7 +11,9 @@
       "Bash(node:*)",
       "Bash(python:*)",
       "Bash(start python -m http.server 8080)",
-      "WebFetch(domain:)"
+      "WebFetch(domain:)",
+      "Bash(del:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

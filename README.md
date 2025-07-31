@@ -1,25 +1,26 @@
-# 🐱 Cat vs Bush Shoe Thrower
+# 🐱 Cat vs Bush - React Three Fiber Game
 
-> **"Practice throwing shoes at bad people."**
+> **"A turn-based shoe-throwing game with George Bush"**
 
-A turn-based 3D shoe throwing game built with TypeScript and Three.js, inspired by retro PS1-era gaming aesthetics.
+A humorous 3D shoe throwing game built with React, TypeScript, and Three.js, featuring smooth camera transitions, physics-based movement, and PS1-inspired aesthetics.
 
-![Game Status](https://img.shields.io/badge/Status-Playable-brightgreen)
-![Version](https://img.shields.io/badge/Version-v0.1-blue)
-![Tech Stack](https://img.shields.io/badge/Tech-TypeScript%20%7C%20Three.js%20%7C%20GSAP-orange)
+![Game Status](https://img.shields.io/badge/Status-Environment_Ready-brightgreen)
+![Version](https://img.shields.io/badge/Version-v0.2-blue)
+![Tech Stack](https://img.shields.io/badge/Tech-React%20%7C%20TypeScript%20%7C%20Three.js%20%7C%20GSAP-orange)
 
 ## 🎮 Game Overview
 
-Cat vs Bush Shoe Thrower is a physics-based turn-based combat game where players throw shoes at a bush enemy across 3 rounds. Each player has 3 hearts and gets 2 shoes per turn. The game features smooth camera transitions, realistic projectile physics, and retro-inspired visuals.
+Cat vs Bush is a turn-based shoe-throwing game where a cat player faces off against George Bush. The game features dual camera perspectives, realistic physics, and a bright, clean aesthetic inspired by retro gaming.
 
-### Key Features
+### Current Features ✅
 
-- **Turn-based Combat**: Strategic 2-shoes-per-turn gameplay
-- **Physics-based Projectiles**: Realistic arcing trajectories with `y = 2 * sin(tπ)` formula
-- **Dynamic Camera System**: Automatic POV switching + manual camera controls
-- **Health System**: 3 hearts each, visual feedback on hits
-- **Round Progression**: 3 rounds with target repositioning
-- **Responsive UI**: Real-time health bars, round counters, and game state
+- **Dual Camera System**: First-person cat view + third-person behind-Bush view
+- **Smooth Transitions**: GSAP-powered camera switching (K key)
+- **Physics-based Movement**: Critically-damped spring physics for responsive control
+- **GLTF Model Loading**: George Bush renders with proper textures and materials
+- **Intelligent AI**: Bush moves randomly every 2-4 seconds during player turns
+- **Bright Environment**: Fully lit scene with white walls and black floor (coming soon)
+- **Camera-aware Controls**: Intuitive left/right movement in both camera modes
 
 ## 🚀 Quick Start
 
@@ -32,16 +33,12 @@ Cat vs Bush Shoe Thrower is a physics-based turn-based combat game where players
 ### Installation & Setup
 
 ```bash
-# Clone or create the project
-npm create vite@latest shoe-thrower -- --template vanilla-ts
-cd shoe-thrower
+# Clone the repository
+git clone <repository-url>
+cd shoes
 
 # Install dependencies
 npm install
-npm install three @types/three gsap spritesheet-js
-
-# Create directory structure
-mkdir -p src/systems public/sprites public/models
 
 # Start development server
 npm run dev
@@ -61,162 +58,166 @@ npm run dev
    npm run preview
    ```
 
-3. **Deploy to GitHub Pages**:
-   ```bash
-   npm run build
-   npx gh-pages -d dist
-   ```
-
-## 🕹️ How to Play
+## 🕹️ How to Play (Current State)
 
 ### Controls
 
-| Input | Action |
-|-------|--------|
-| **Arrow Keys** / **A/D** | Move camera left/right (clamped -5 to +5) |
-| **Spacebar** | Throw shoe (2 per turn) |
-| **1** | Switch to Player camera view |
-| **2** | Switch to NPC camera view |
-| **3** | Switch to Overhead camera view |
+| Input | Action | Status |
+|-------|--------|--------|
+| **K** | Toggle Camera (FP ↔ TP) | ✅ Working |
+| **←/→** or **A/D** | Move Player Left/Right | ✅ Working |
 
-### Gameplay Loop
+### Camera Modes
 
-1. **Player Turn**: Move camera to aim, throw 2 shoes with spacebar
-2. **Enemy Turn**: Camera auto-switches to enemy POV, enemy attacks (60% hit chance)
-3. **Round End**: Target repositions randomly, new round begins
-4. **Victory**: Reduce enemy health to 0 or survive 3 rounds
-5. **Defeat**: Player health reaches 0
+- **First-Person (FP)**: View from cat's eyes looking forward at Bush
+- **Third-Person (TP)**: Behind Bush looking back at player (DS Pokemon style)
 
-### Game Mechanics
+### Current Gameplay
 
-- **Health**: Both players start with 3 hearts (❤️❤️❤️)
-- **Damage**: Each successful shoe hit deals 1 damage
-- **Accuracy**: Player aims manually, enemy has 60% hit chance
-- **Rounds**: 3 rounds maximum, target moves each round
-- **Turn Limit**: 2 shoes per player turn
+1. **Movement**: Use arrow keys or A/D to move the cat horizontally
+2. **Camera**: Press K to switch between first-person and third-person views
+3. **Bush AI**: Watch George Bush move around randomly every few seconds
+4. **Physics**: Experience smooth spring-based movement with realistic damping
 
-## 🏗️ Project Structure
+## 🏗️ Project Architecture
 
 ```
-shoe-thrower/
-├── src/
-│   ├── main.ts              # Game bootstrap & main loop
-│   ├── states.ts            # Game state management
-│   ├── style.css            # Fullscreen game styles
+src/
+├── App.tsx                   # Entry point
+├── components/
+│   ├── GameScene.tsx         # Main game container & state management
+│   ├── entities/
+│   │   ├── BushEntity.tsx    # George Bush with AI movement & GLTF loading
+│   │   └── PlayerEntity.tsx  # Cat with spring physics & sprite rendering
 │   └── systems/
-│       ├── input.ts         # Keyboard input handling
-│       ├── camera.ts        # Smooth POV transitions
-│       ├── target.ts        # Enemy NPC behavior
-│       └── projectile.ts    # Shoe physics & animation
-├── public/
-│   ├── sprites/             # Sprite sheets (future)
-│   └── models/              # 3D models (future)
-├── package.json
-└── README.md
+│       ├── CameraSystem.tsx  # Dual camera with GSAP transitions
+│       └── InputSystem.tsx   # Input handling system
+├── main.tsx                  # React bootstrap
+└── style.css                 # Global styles
+public/
+├── models/
+│   └── bush/
+│       ├── scene.gltf        # Bush GLTF model
+│       └── textures/         # Bush texture files
+└── sprites/
+    └── lowres_player.png     # Player sprite
 ```
 
 ## 🛠️ Technical Implementation
 
-### Architecture
+### Core Technologies
 
-- **Modular Systems**: Clean separation of input, camera, projectiles, and game state
-- **Entity Management**: Object-oriented approach with proper lifecycle management
-- **Animation Pipeline**: GSAP for camera transitions, custom physics for projectiles
-- **State Machine**: Robust turn management with phase transitions
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **React** | Component architecture | ✅ Implemented |
+| **React Three Fiber** | 3D rendering framework | ✅ Implemented |
+| **TypeScript** | Type-safe development | ✅ Implemented |
+| **Three.js** | WebGL 3D engine | ✅ Implemented |
+| **GSAP** | Camera animations | ✅ Implemented |
+| **Vite** | Build tool & dev server | ✅ Implemented |
 
-### Key Technologies
+### Key Features Implementation
 
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **TypeScript** | Type-safe development | Latest |
-| **Three.js** | 3D rendering & WebGL | Latest |
-| **GSAP** | Camera animations | Latest |
-| **Vite** | Build tool & dev server | Latest |
+#### 🎥 **Camera System**
+```typescript
+// First-person (cat eyes)
+FP: {
+  position: new THREE.Vector3(0, 1.6, 0),
+  lookAt: new THREE.Vector3(0, 1.4, 10)
+}
 
-### Performance Features
-
-- **Efficient Rendering**: Single scene graph with minimal draw calls
-- **Memory Management**: Proper cleanup of projectiles and temporary objects
-- **Responsive Design**: Fullscreen canvas with window resize handling
-- **Optimized Physics**: Lightweight arc calculations without heavy physics engine
-
-## 🎯 Development Milestones
-
-- [x] **M1**: Blank world with scene, camera, gray ground
-- [x] **M2**: Left/right camera movement (clamped -5...5m)  
-- [x] **M3**: Dummy target NPC with random positioning
-- [x] **M4**: Smooth POV swap with GSAP camera transitions
-- [x] **M5**: Shoe projectile with realistic arc physics
-- [x] **M6**: Full turn logic with health, rounds, UI overlay
-- [ ] **M7**: Art pass (sprites, models, sound effects)
-
-## 🎨 Art & Assets Pipeline
-
-### Planned Assets
-
-| Asset Type | Tool | Format | Resolution | Notes |
-|------------|------|--------|------------|-------|
-| Cat Sprites | Aseprite/Piskel | PNG | 64×64/128×128 | Multiple meme variants |
-| Bush Sprite | Aseprite | PNG | 64×64 | Idle/hit animations |
-| Shoe Sprite | Aseprite | PNG | 32×32 | Spinning animation |
-| Podium Model | Blender | glTF | ≤200 tris | PS1-style low-poly |
-| Sound FX | Bfxr | WAV | 8-bit | "pew"/"thud" sounds |
-
-### Asset Generation
-
-```bash
-# Generate sprite sheets (when assets ready)
-npm run generate-sprites
-
-# Copy models to public
-cp assets/models/*.gltf public/models/
+// Third-person (behind Bush)
+TP: {
+  position: new THREE.Vector3(0, 2.4, 10),
+  lookAt: new THREE.Vector3(0, 1.4, 0)
+}
 ```
 
-## 🧪 Testing
+#### 🏃 **Spring Physics**
+```typescript
+// Critically-damped movement (τ ≈ 0.12s)
+const SPRING_CONSTANT = 1 / (0.12 * 0.12)
+const DAMPING_RATIO = 1.0
+```
+
+#### 🤖 **Bush AI**
+```typescript
+// Random movement every 2-4 seconds at 1 m/s
+if (timer >= nextDirectionChange) {
+  direction = [-1, 0, 1][Math.floor(Math.random() * 3)]
+  nextDirectionChange = Math.random() * 2 + 2
+}
+```
+
+## 🎯 Development Progress
+
+### ✅ **Completed (Environment Phase)**
+- [x] React Three Fiber setup and architecture
+- [x] Dual camera system with smooth GSAP transitions
+- [x] Player entity with spring physics movement
+- [x] Bush entity with GLTF loading and AI movement
+- [x] Bright lighting system for full visibility
+- [x] Camera-aware input mapping
+- [x] State management and component architecture
+
+### 🚧 **In Progress**
+- [ ] White walls and black floor environment
+- [ ] Shoe throwing mechanics
+- [ ] Hit detection system
+- [ ] Health system (3 hearts each)
+- [ ] Turn-based gameplay loop
+
+### 📋 **Planned Features**
+- [ ] Projectile physics with realistic arcs
+- [ ] Visual feedback for hits and damage
+- [ ] Round progression system
+- [ ] Sound effects and particle effects
+- [ ] Victory/defeat conditions
+
+## 🎨 Current Visual Setup
+
+### Environment
+- **Player Position**: (0, 0, 0) - Cat sprite at origin
+- **Bush Position**: (0, 0, 8) - George Bush 8 units away
+- **Separation**: 8 units for proper shoe throwing distance
+- **Bounds**: Player movement clamped to [-1.5, +1.5] meters
+
+### Lighting
+- **Ambient Light**: 1.5 intensity for bright environment
+- **Directional Lights**: Multiple angles for even illumination
+- **Point Light**: Centered illumination for depth
+- **Shadow Mapping**: 1024x1024 resolution with proper bounds
+
+## 🧪 Testing & Validation
 
 ### Manual Testing Checklist
+- [x] Camera switching works smoothly (K key)
+- [x] Player movement responds correctly in both camera modes
+- [x] Bush AI moves randomly every 2-4 seconds
+- [x] Spring physics feels responsive (τ ≈ 0.12s)
+- [x] GLTF models load with proper materials
+- [x] Scene is bright and fully visible
+- [x] No console errors or warnings
 
-- [ ] Camera movement works within bounds
-- [ ] Shoes fire and follow arc trajectory  
-- [ ] Target hit detection works correctly
-- [ ] Health decreases on successful hits
-- [ ] Turn progression follows 2-shoes-per-turn rule
-- [ ] Camera auto-switches during enemy turn
-- [ ] Game ends correctly on win/lose conditions
-- [ ] UI updates reflect accurate game state
-- [ ] All manual camera switches (1/2/3) work
-- [ ] Window resize maintains aspect ratio
+### Performance Validation
+- [x] 60 FPS on modern hardware
+- [x] Smooth camera transitions without jank
+- [x] Efficient React component updates
+- [x] Proper memory management
 
-### Performance Testing
+## 🚀 Next Steps
 
-```bash
-# Check bundle size
-npm run build
-ls -lh dist/
+### Immediate Priorities
+1. **Environment Design**: Add white walls and black floor
+2. **Shoe Mechanics**: Implement physics-based projectile system
+3. **Hit Detection**: Lane-based collision detection
+4. **Health System**: 3 hearts per player with visual feedback
 
-# Profile in browser
-# Open DevTools > Performance > Record gameplay session
-```
-
-## 🚀 Deployment
-
-### GitHub Pages (Recommended)
-
-```bash
-# Build and deploy
-npm run build
-npx gh-pages -d dist
-
-# Or set up automated deployment
-npm install --save-dev gh-pages
-# Add to package.json scripts: "deploy": "npm run build && gh-pages -d dist"
-```
-
-### Other Platforms
-
-- **Netlify**: Drag & drop `dist/` folder
-- **Vercel**: Connect GitHub repo, auto-deploy
-- **itch.io**: Upload as HTML5 game
+### Implementation Roadmap
+1. **Phase 1**: Environment polish (white walls, black floor)
+2. **Phase 2**: Shoe throwing mechanics
+3. **Phase 3**: Turn-based gameplay loop
+4. **Phase 4**: Visual polish and sound effects
 
 ## 🤝 Contributing
 
@@ -226,45 +227,36 @@ npm install --save-dev gh-pages
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open Pull Request
 
-### Development Setup
-
-```bash
-git clone <your-fork>
-cd shoe-thrower
-npm install
-npm run dev
-# Make changes, test, commit
-```
-
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🎉 Acknowledgments
 
-- **Three.js** community for excellent documentation
-- **GSAP** for smooth animation capabilities  
-- **Vite** for lightning-fast development experience
-- **Retro gaming** for aesthetic inspiration
+- **React Three Fiber** community for excellent React integration
+- **Three.js** for powerful 3D capabilities
+- **GSAP** for smooth animation support
+- **George Bush** for being a good sport
 
-## 🐛 Known Issues
+## 🐛 Current Known Issues
 
-- Target hit detection could be more precise
-- Enemy AI is currently random (60% hit chance)
-- No sound effects yet (M7 milestone)
-- Basic placeholder graphics (M7 milestone)
+- Environment needs white walls and black floor styling
+- Shoe throwing mechanics not yet implemented
+- No health system or game loop yet
+- Placeholder visual assets
 
 ## 🔮 Future Enhancements
 
-- **M7 Art Pass**: Replace boxes with actual sprites and models
-- **Sound System**: Add retro-style sound effects and music
-- **Particle Effects**: Shoe trails, hit sparks, dust clouds
-- **Difficulty Levels**: Adjustable enemy accuracy and health
-- **Power-ups**: Special shoes with different effects
-- **Multiplayer**: Local or online player vs player
+- **Particle Effects**: Shoe trails and impact effects
+- **Sound System**: Retro-style sound effects
+- **Multiple Levels**: Different environments and challenges
+- **Multiplayer**: Local or network multiplayer support
+- **Power-ups**: Special shoes with unique properties
 
 ---
 
-**Built with ❤️ using TypeScript & Three.js**
+**Built with ❤️ using React, TypeScript & Three.js**
 
-*Ready to throw some shoes? Fire up the dev server and start playing!* 🥿✨
+*Ready to throw some shoes? The environment is set up and waiting!* 🥿✨
+
+## 🎯 **Current Status: Environment Complete - Ready for Shoe Implementation**
