@@ -1,9 +1,11 @@
 import * as THREE from 'three'
 import { gsap } from 'gsap'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { InputSystem } from './Input'
 
 export class Game {
   private scene: THREE.Scene
+  private uiScene: THREE.Scene
   private renderer: THREE.WebGLRenderer
   private fpCamera: THREE.PerspectiveCamera
   private tpCamera: THREE.PerspectiveCamera
@@ -19,7 +21,8 @@ export class Game {
   private readonly dampingRatio: number = 1.0
   
   private catSprite?: THREE.Sprite
-  private bushMesh?: THREE.Mesh
+  private bushMesh?: THREE.Object3D
+  private gltfLoader: GLTFLoader
   
   // Bush movement system
   private bushTargetX: number = 0
@@ -50,15 +53,21 @@ export class Game {
   private npcShoesThrown: number = 0
   
   private lastTime: number = 0
-  private lastToggleTime: number = 0
   private lastThrowTime: number = 0
   private isTransitioning: boolean = false
   
   private shoes: THREE.Mesh[] = []
   
+  // UI elements
+  private playerHearts: THREE.Sprite[] = []
+  private bushHearts: THREE.Sprite[] = []
+  private uiCamera: THREE.OrthographicCamera
+  
   constructor() {
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x87CEEB)
+    
+    this.uiScene = new THREE.Scene()
     
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
@@ -79,9 +88,19 @@ export class Game {
     
     this.currentCamera = this.fpCamera
     this.inputSystem = new InputSystem()
+    this.gltfLoader = new GLTFLoader()
+    
+    // Setup UI camera for rendering hearts
+    this.uiCamera = new THREE.OrthographicCamera(
+      -window.innerWidth / 2, window.innerWidth / 2,
+      window.innerHeight / 2, -window.innerHeight / 2,
+      1, 1000
+    )
+    this.uiCamera.position.z = 100
     
     this.setupScene()
     this.setupEventListeners()
+    this.createHeartSprites()
     
     console.log('🐱 Cat vs Bush - Game Initialized!')
   }
@@ -145,7 +164,7 @@ export class Game {
    */
   private createCat(): void {
     const loader = new THREE.TextureLoader()
-    const texture = loader.load('/sprites/player.jpg', () => {
+    const texture = loader.load('/sprites/lowres_player.png', () => {
       console.log('🐱 Player sprite loaded!')
     })
     
@@ -161,20 +180,167 @@ export class Game {
   }
   
   /**
-   * Creates the enemy bush as a low-poly 3D mesh
+   * Creates the enemy bush by loading GLTF model with PS1-style materials
    */
   private createBush(): void {
-    const geometry = new THREE.BoxGeometry(1.2, 2.0, 0.8)
-    const material = new THREE.MeshLambertMaterial({ 
-      color: 0x2d5a27,
-      flatShading: true
+    this.gltfLoader.load('/models/bush/scene.gltf', (gltf: any) => {
+      this.bushMesh = gltf.scene
+      if (this.bushMesh) {
+        this.bushMesh.scale.setScalar(1)
+        this.bushMesh.position.set(0, 0, 8)
+        this.scene.add(this.bushMesh)
+        
+        // Apply PS1-style materials
+        this.bushMesh.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh
+          const srcMat = mesh.material as THREE.MeshStandardMaterial
+          
+          // Create PS1-style material
+          const psxMat = new THREE.MeshLambertMaterial({
+            color: 0xffffff,
+            map: srcMat.map ?? null,
+            vertexColors: true,
+            flatShading: true
+          })
+          
+          // Apply nearest filter and disable mipmaps for crunchy pixels
+          if (psxMat.map) {
+            psxMat.map.magFilter = THREE.NearestFilter
+            psxMat.map.minFilter = THREE.NearestFilter
+            psxMat.map.generateMipmaps = false
+          }
+          
+          mesh.material = psxMat
+        }
+      })
+      
+        console.log('🌳 Bush GLTF model loaded and PS1-ified at z=8')
+      }
+    }, undefined, (error: any) => {
+      console.error('Error loading bush model:', error)
+      // Fallback to simple box geometry
+      const geometry = new THREE.BoxGeometry(1.2, 2.0, 0.8)
+      const material = new THREE.MeshLambertMaterial({ 
+        color: 0x2d5a27,
+        flatShading: true
+      })
+      
+      this.bushMesh = new THREE.Mesh(geometry, material)
+      this.bushMesh.position.set(0, 1, 8)
+      this.scene.add(this.bushMesh)
+      // make bush face in the -z direction
+      
+      console.log('🌳 Bush fallback created at z=8')
     })
+  }
+  
+  /**
+   * Creates heart sprites for UI health display
+   */
+  private createHeartSprites(): void {
+    // Create heart texture from text
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')!
+    canvas.width = 64
+    canvas.height = 64
     
-    this.bushMesh = new THREE.Mesh(geometry, material)
-    this.bushMesh.position.set(0, 1, 8)
-    this.scene.add(this.bushMesh)
+    // Draw filled heart
+    context.font = '48px Arial'
+    context.textAlign = 'center'
+    context.fillStyle = '#ff0000'
+    context.fillText('♥', 32, 48)
     
-    console.log('🌳 Bush created at z=8')
+    const filledHeartTexture = new THREE.CanvasTexture(canvas)
+    filledHeartTexture.magFilter = THREE.NearestFilter
+    filledHeartTexture.minFilter = THREE.NearestFilter
+    
+    // Create empty heart texture
+    const canvas2 = document.createElement('canvas')
+    const context2 = canvas2.getContext('2d')!
+    canvas2.width = 64
+    canvas2.height = 64
+    
+    context2.font = '48px Arial'
+    context2.textAlign = 'center'
+    context2.fillStyle = '#333333'
+    context2.fillText('♥', 32, 48)
+    
+    const emptyHeartTexture = new THREE.CanvasTexture(canvas2)
+    emptyHeartTexture.magFilter = THREE.NearestFilter
+    emptyHeartTexture.minFilter = THREE.NearestFilter
+    
+    // Create player hearts (top-left)
+    for (let i = 0; i < 3; i++) {
+      const heartMaterial = new THREE.SpriteMaterial({ 
+        map: filledHeartTexture,
+        transparent: true
+      })
+      const heart = new THREE.Sprite(heartMaterial)
+      heart.scale.set(40, 40, 1)
+      heart.position.set(
+        -window.innerWidth / 2 + 40 + i * 50, 
+        window.innerHeight / 2 - 40, 
+        1
+      )
+      this.playerHearts.push(heart)
+      this.uiScene.add(heart)
+      
+      // Store both textures on the sprite for easy access
+      ;(heart as any).filledTexture = filledHeartTexture
+      ;(heart as any).emptyTexture = emptyHeartTexture
+    }
+    
+    // Create bush hearts (top-right)
+    for (let i = 0; i < 3; i++) {
+      const heartMaterial = new THREE.SpriteMaterial({ 
+        map: filledHeartTexture,
+        transparent: true
+      })
+      const heart = new THREE.Sprite(heartMaterial)
+      heart.scale.set(40, 40, 1)
+      heart.position.set(
+        window.innerWidth / 2 - 40 - (2 - i) * 50, 
+        window.innerHeight / 2 - 40, 
+        1
+      )
+      this.bushHearts.push(heart)
+      this.uiScene.add(heart)
+      
+      ;(heart as any).filledTexture = filledHeartTexture
+      ;(heart as any).emptyTexture = emptyHeartTexture
+    }
+    
+    console.log('💖 Heart sprites created')
+  }
+  
+  /**
+   * Updates heart sprites based on current health values
+   */
+  private updateHeartDisplay(): void {
+    // Update player hearts
+    for (let i = 0; i < this.playerHearts.length; i++) {
+      const heart = this.playerHearts[i]
+      const material = heart.material as THREE.SpriteMaterial
+      if (i < this.playerHealth) {
+        material.map = (heart as any).filledTexture
+      } else {
+        material.map = (heart as any).emptyTexture
+      }
+      material.needsUpdate = true
+    }
+    
+    // Update bush hearts
+    for (let i = 0; i < this.bushHearts.length; i++) {
+      const heart = this.bushHearts[i]
+      const material = heart.material as THREE.SpriteMaterial
+      if (i < this.bushHealth) {
+        material.map = (heart as any).filledTexture
+      } else {
+        material.map = (heart as any).emptyTexture
+      }
+      material.needsUpdate = true
+    }
   }
   
   /**
@@ -187,7 +353,40 @@ export class Game {
       this.tpCamera.aspect = window.innerWidth / window.innerHeight
       this.tpCamera.updateProjectionMatrix()
       this.renderer.setSize(window.innerWidth, window.innerHeight)
+      
+      // Update UI camera
+      this.uiCamera.left = -window.innerWidth / 2
+      this.uiCamera.right = window.innerWidth / 2
+      this.uiCamera.top = window.innerHeight / 2
+      this.uiCamera.bottom = -window.innerHeight / 2
+      this.uiCamera.updateProjectionMatrix()
+      
+      // Reposition hearts
+      this.repositionHearts()
     })
+  }
+  
+  /**
+   * Repositions heart sprites after window resize
+   */
+  private repositionHearts(): void {
+    // Reposition player hearts (top-left)
+    for (let i = 0; i < this.playerHearts.length; i++) {
+      this.playerHearts[i].position.set(
+        -window.innerWidth / 2 + 40 + i * 50, 
+        window.innerHeight / 2 - 40, 
+        1
+      )
+    }
+    
+    // Reposition bush hearts (top-right)
+    for (let i = 0; i < this.bushHearts.length; i++) {
+      this.bushHearts[i].position.set(
+        window.innerWidth / 2 - 40 - (2 - i) * 50, 
+        window.innerHeight / 2 - 40, 
+        1
+      )
+    }
   }
   
   /**
@@ -372,7 +571,7 @@ export class Game {
    * Creates and throws a shoe projectile from the player toward the bush
    */
   private throwPlayerShoe(): void {
-    const shoe = this.createShoe(this.currentX, 1.0, 0.2, 0, 8, 'player')
+    this.createShoe(this.currentX, 1.0, 0.2, 0, 8, 'player')
     
     this.shoesThrown++
     console.log(`👟 Player shoe ${this.shoesThrown}/2 thrown`)
@@ -391,7 +590,7 @@ export class Game {
     const targetX = this.currentX // Aim at current player position
     const vX = (targetX - this.bushCurrentX) / 1.0 // Reach target in 1 second
     
-    const shoe = this.createShoe(this.bushCurrentX, 1.0, 8, vX, -8, 'npc')
+    this.createShoe(this.bushCurrentX, 1.0, 8, vX, -8, 'npc')
     
     console.log(`💥 NPC shoe ${this.npcShoesThrown + 1}/2 thrown at player`)
   }
@@ -498,18 +697,38 @@ export class Game {
     
     // Idle bob animation
     const time = Date.now() * 0.001
-    this.bushMesh.position.y = 1 + Math.sin(time * 2) * 0.05
+    const baseY = this.bushMesh instanceof THREE.Mesh ? 1 : 0 // Different base height for GLTF vs box
+    this.bushMesh.position.y = baseY + Math.sin(time * 2) * 0.05
     
     // Handle hit flash effect
     if (this.bushFlashing) {
       this.bushHitTimer -= deltaTime
       const flashSpeed = 10
       const flashAlpha = 0.5 + 0.5 * Math.sin(this.bushHitTimer * flashSpeed)
-      ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setRGB(1, flashAlpha * 0.2, flashAlpha * 0.2)
+      
+      // Apply flash effect to all meshes in the bush
+      this.bushMesh.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh
+          const material = mesh.material as THREE.MeshLambertMaterial
+          if (material) {
+            material.color.setRGB(1, flashAlpha * 0.2, flashAlpha * 0.2)
+          }
+        }
+      })
       
       if (this.bushHitTimer <= 0) {
         this.bushFlashing = false
-        ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setHex(0x2d5a27) // Reset to green
+        // Reset colors
+        this.bushMesh.traverse((obj) => {
+          if ((obj as THREE.Mesh).isMesh) {
+            const mesh = obj as THREE.Mesh
+            const material = mesh.material as THREE.MeshLambertMaterial
+            if (material) {
+              material.color.setRGB(1, 1, 1) // Reset to white (let texture show through)
+            }
+          }
+        })
       }
     }
   }
@@ -579,6 +798,7 @@ export class Game {
     this.bushHealth--
     this.bushFlashing = true
     this.bushHitTimer = 0.5
+    this.updateHeartDisplay()
     
     console.log(`🎯 Bush hit! Health: ${this.bushHealth}`)
     
@@ -594,6 +814,7 @@ export class Game {
     this.playerHealth--
     this.playerFlashing = true
     this.playerHitTimer = 0.5
+    this.updateHeartDisplay()
     
     console.log(`💥 Player hit! Health: ${this.playerHealth}`)
     
@@ -618,6 +839,7 @@ export class Game {
     // Reset health
     this.bushHealth = 3
     this.playerHealth = 3
+    this.updateHeartDisplay()
     
     // Reset bush
     this.bushTargetX = 0
@@ -647,7 +869,16 @@ export class Game {
     // Reset bush position and color
     if (this.bushMesh) {
       this.bushMesh.position.x = 0
-      ;(this.bushMesh.material as THREE.MeshLambertMaterial).color.setHex(0x2d5a27)
+      // Reset colors for all meshes in the bush
+      this.bushMesh.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh
+          const material = mesh.material as THREE.MeshLambertMaterial
+          if (material) {
+            material.color.setRGB(1, 1, 1) // Reset to white (let texture show through)
+          }
+        }
+      })
     }
     
     // Reset cat position and color
@@ -669,86 +900,12 @@ export class Game {
    * Renders the 3D scene and UI using the current active camera
    */
   public render(): void {
+    // Render main game scene
     this.renderer.render(this.scene, this.currentCamera)
-    this.renderUI()
-  }
-  
-  /**
-   * Renders the UI overlay with hearts and round counter
-   */
-  private renderUI(): void {
-    const canvas = this.renderer.domElement
-    const ctx = canvas.getContext('2d')
     
-    if (!ctx) return
-    
-    const heartSize = 30
-    const margin = 20
-    
-    // Draw both sets of hearts in top-left corner
-    
-    // Draw player hearts (top-left, first row)
-    ctx.font = `${heartSize}px Arial`
-    for (let i = 0; i < 3; i++) {
-      const x = margin + i * (heartSize + 5)
-      const y = margin
-      
-      ctx.fillStyle = i < this.playerHealth ? '#ff0000' : '#333333'
-      ctx.fillText('♥', x, y + heartSize)
-    }
-    
-    // Draw player label
-    ctx.fillStyle = '#ffffff'
-    ctx.font = '16px Arial'
-    ctx.fillText('🐱 PLAYER', margin, margin + 45)
-    
-    // Draw bush hearts (top-left, second row)
-    ctx.font = `${heartSize}px Arial`
-    for (let i = 0; i < 3; i++) {
-      const x = margin + i * (heartSize + 5)
-      const y = margin + 60 // Offset below player hearts
-      
-      ctx.fillStyle = i < this.bushHealth ? '#ff0000' : '#333333'
-      ctx.fillText('♥', x, y + heartSize)
-    }
-    
-    // Draw bush label
-    ctx.fillStyle = '#ffffff'
-    ctx.font = '16px Arial'
-    ctx.fillText('🌳 BUSH', margin, margin + 105)
-    
-    // Draw round counter (center top)
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 24px Arial'
-    ctx.textAlign = 'center'
-    ctx.fillText(`ROUND ${this.roundNumber}`, canvas.width / 2, margin + 30)
-    
-    // Draw turn indicator
-    ctx.font = '18px Arial'
-    let turnText: string
-    let turnColor: string
-    
-    if (this.gameState === 'PLAYER_TURN') {
-      turnText = 'YOUR TURN'
-      turnColor = '#00ff00'
-    } else if (this.gameState === 'NPC_TURN') {
-      turnText = 'NPC TURN'
-      turnColor = '#ff6600'
-    } else {
-      turnText = 'SWITCHING...'
-      turnColor = '#ffff00'
-    }
-    ctx.fillStyle = turnColor
-    ctx.fillText(turnText, canvas.width / 2, margin + 55)
-    
-    // Draw shoe counter during player turn
-    if (this.gameState === 'PLAYER_TURN') {
-      ctx.font = '16px Arial'
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText(`SHOES: ${this.shoesThrown}/2`, canvas.width / 2, margin + 75)
-    }
-    
-    // Reset text alignment
-    ctx.textAlign = 'left'
+    // Render UI elements (hearts) on top
+    this.renderer.autoClear = false
+    this.renderer.render(this.uiScene, this.uiCamera)
+    this.renderer.autoClear = true
   }
 }
