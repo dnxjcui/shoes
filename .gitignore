@@ -23,8 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-*.md
+# *.md
 !README.md
+!REPORT.md
 !implementation_guide.md
+!threejs_guide.md
 
 *.pptx

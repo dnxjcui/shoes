@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shoe GLB Renderer - PS1 Style</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        #canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>Shoe GLB Renderer</h3>
+        <p>PS1-Style Material Conversion Test</p>
+        <p>Mouse: Rotate | Scroll: Zoom</p>
+        <div id="status">Loading...</div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x404040);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(2, 2, 2);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFShadowMap;
+        document.body.appendChild(renderer.domElement);
+        
+        // Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        
+        // Lighting setup for PS1 style
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 512;
+        directionalLight.shadow.mapSize.width = 512;
+        scene.add(directionalLight);
+        
+        // Ground plane for reference
+        const groundGeometry = new THREE.PlaneGeometry(10, 10);
+        const groundMaterial = new THREE.MeshLambertMaterial({ 
+            color: 0x333333,
+            transparent: true,
+            opacity: 0.8
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(10, 20, 0x555555, 0x222222);
+        scene.add(gridHelper);
+        
+        // Status update function
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+        
+        // Detailed material analysis function
+        function analyzeMaterial(material, name) {
+            console.log(`=== Material Analysis: ${name} ===`);
+            console.log('Type:', material.type);
+            console.log('Color:', material.color);
+            console.log('Map:', material.map);
+            console.log('Normal Map:', material.normalMap);
+            console.log('Roughness Map:', material.roughnessMap);
+            console.log('Metalness Map:', material.metalnessMap);
+            console.log('Roughness Value:', material.roughness);
+            console.log('Metalness Value:', material.metalness);
+            console.log('Opacity:', material.opacity);
+            console.log('Transparent:', material.transparent);
+            console.log('All properties:', Object.keys(material));
+            console.log('=====================================');
+        }
+        
+        // PS1-style material conversion function
+        function convertToPS1Material(material, meshName = 'unknown') {
+            analyzeMaterial(material, meshName);
+            
+            // Create new PS1-style material
+            const ps1Material = new THREE.MeshLambertMaterial({
+                flatShading: true,
+                vertexColors: false
+            });
+            
+            // Start with a base color (brown shoe)
+            ps1Material.color.setHex(0x8B4513);
+            
+            // Copy color if available
+            if (material.color) {
+                ps1Material.color.copy(material.color);
+                console.log(`Applied color from material:`, material.color);
+            }
+            
+            // Handle textures with PS1 filtering
+            if (material.map) {
+                ps1Material.map = material.map;
+                ps1Material.map.magFilter = THREE.NearestFilter;
+                ps1Material.map.minFilter = THREE.NearestFilter;
+                ps1Material.map.generateMipmaps = false;
+                ps1Material.map.colorSpace = THREE.SRGBColorSpace;
+                console.log('Applied diffuse texture');
+            }
+            
+            // Handle emissive (glowing parts)
+            if (material.emissive && material.emissive.getHex() > 0) {
+                ps1Material.emissive.copy(material.emissive);
+                console.log('Applied emissive color:', material.emissive);
+            }
+            
+            // Handle normal maps (convert to basic)
+            if (material.normalMap) {
+                console.log('Normal map found - ignoring for PS1 style');
+            }
+            
+            // Handle roughness/metalness (convert to simple color tinting)
+            if (material.roughness !== undefined) {
+                const roughnessFactor = Math.max(0.3, 1.0 - (material.roughness * 0.4));
+                ps1Material.color.multiplyScalar(roughnessFactor);
+                console.log(`Applied roughness factor: ${roughnessFactor}`);
+            }
+            
+            if (material.metalness !== undefined && material.metalness > 0.5) {
+                // Metallic materials get color boost and slight blue tint
+                ps1Material.color.multiplyScalar(1.2);
+                ps1Material.color.b += 0.1;
+                console.log('Applied metallic enhancement');
+            }
+            
+            // Ensure minimum visibility
+            if (ps1Material.color.r + ps1Material.color.g + ps1Material.color.b < 0.3) {
+                ps1Material.color.setHex(0x654321); // Fallback brown
+                console.log('Applied fallback brown color');
+            }
+            
+            console.log('Final PS1 material color:', ps1Material.color);
+            return ps1Material;
+        }
+        
+        // GLB loader
+        const loader = new THREE.GLTFLoader();
+        let shoeModel = null;
+        
+        updateStatus('Loading shoe.glb...');
+        
+        // Try both shoe models
+        const shoeModels = ['./public/models/shoe.glb', './public/models/shoe_low.glb'];
+        let currentModelIndex = 0;
+        
+        function loadNextModel() {
+            if (currentModelIndex >= shoeModels.length) {
+                updateStatus('All models failed - creating fallback');
+                createFallbackShoe();
+                return;
+            }
+            
+            const modelPath = shoeModels[currentModelIndex];
+            updateStatus(`Loading ${modelPath}...`);
+            
+            loader.load(
+                modelPath,
+                function(gltf) {
+                updateStatus('Processing materials...');
+                
+                shoeModel = gltf.scene;
+                
+                // Apply PS1-style material conversion
+                let meshCount = 0;
+                shoeModel.traverse((child) => {
+                    if (child.isMesh) {
+                        meshCount++;
+                        console.log(`\n=== Processing Mesh ${meshCount}: ${child.name || 'unnamed'} ===`);
+                        console.log('Geometry:', child.geometry);
+                        console.log('Original material:', child.material);
+                        
+                        // Handle both single materials and material arrays
+                        if (Array.isArray(child.material)) {
+                            console.log(`Converting ${child.material.length} materials...`);
+                            child.material = child.material.map((mat, index) => 
+                                convertToPS1Material(mat, `${child.name}_${index}`)
+                            );
+                        } else {
+                            console.log('Converting single material...');
+                            child.material = convertToPS1Material(child.material, child.name || 'mesh');
+                        }
+                        
+                        // Enable shadows
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        console.log('Converted material(s):', child.material);
+                        console.log('====================================\n');
+                    }
+                });
+                
+                console.log(`Total meshes processed: ${meshCount}`);
+                
+                // Center and scale the model
+                const box = new THREE.Box3().setFromObject(shoeModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                // Center the model
+                shoeModel.position.sub(center);
+                
+                // Scale to reasonable size (30cm shoe)
+                const maxDimension = Math.max(size.x, size.y, size.z);
+                const targetSize = 0.3;
+                const scale = targetSize / maxDimension;
+                shoeModel.scale.setScalar(scale);
+                
+                // Position above ground
+                shoeModel.position.y = 0.15;
+                
+                scene.add(shoeModel);
+                
+                updateStatus(`Model loaded! Meshes: ${shoeModel.children.length}, Scale: ${scale.toFixed(3)}`);
+                
+                console.log('Shoe model loaded:', shoeModel);
+                console.log('Bounding box:', box);
+                console.log('Size:', size);
+                console.log('Applied scale:', scale);
+            },
+            function(progress) {
+                const percent = Math.round((progress.loaded / progress.total) * 100);
+                updateStatus(`Loading... ${percent}%`);
+            },
+            function(error) {
+                console.error(`Error loading ${modelPath}:`, error);
+                updateStatus(`Failed ${modelPath} - trying next...`);
+                
+                currentModelIndex++;
+                setTimeout(loadNextModel, 500);
+            }
+        );
+        }
+        
+        // Start loading
+        loadNextModel();
+        
+        // Fallback shoe creation
+        function createFallbackShoe() {
+            updateStatus('Creating fallback shoe geometry...');
+            
+            const shoeGroup = new THREE.Group();
+            
+            // Shoe body (main part)
+            const bodyGeometry = new THREE.BoxGeometry(0.3, 0.1, 0.15);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x8B4513,
+                flatShading: true
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            shoeGroup.add(body);
+            
+            // Shoe toe (rounded front)
+            const toeGeometry = new THREE.SphereGeometry(0.08, 8, 6);
+            const toeMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x654321,
+                flatShading: true
+            });
+            const toe = new THREE.Mesh(toeGeometry, toeMaterial);
+            toe.position.z = 0.1;
+            toe.castShadow = true;
+            shoeGroup.add(toe);
+            
+            // Shoe heel
+            const heelGeometry = new THREE.BoxGeometry(0.25, 0.15, 0.08);
+            const heelMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x2F1B14,
+                flatShading: true
+            });
+            const heel = new THREE.Mesh(heelGeometry, heelMaterial);
+            heel.position.z = -0.08;
+            heel.position.y = -0.02;
+            heel.castShadow = true;
+            shoeGroup.add(heel);
+            
+            shoeGroup.position.y = 0.15;
+            scene.add(shoeGroup);
+            
+            updateStatus('Fallback shoe created (GLB failed to load)');
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate shoe slowly
+            if (shoeModel) {
+                shoeModel.rotation.y += 0.01;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Start animation
+        animate();
+        
+        console.log('Shoe GLB Renderer initialized');
+        console.log('Expected file path: ./public/models/shoe.glb');
+    </script>
+</body>
+</html>
